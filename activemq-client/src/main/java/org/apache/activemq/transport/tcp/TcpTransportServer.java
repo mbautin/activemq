@@ -27,6 +27,8 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.UnknownHostException;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -173,6 +175,19 @@ public class TcpTransportServer extends TransportServerThreadSupport implements 
                             "Invalid transport options {enabledCipherSuites=%s}", cipherSuites));
                     }
                 }
+
+                // http://www.oracle.com/technetwork/java/javase/documentation/cve-2014-3566-2342133.html
+                // Strip "SSLv3" from the current enabled protocols.
+                SSLServerSocket sslSocket = (SSLServerSocket) socket;
+                String[] protocols = sslSocket.getEnabledProtocols();
+                Set<String> set = new HashSet<String>();
+                for (String s : protocols) {
+                    if (s.equals("SSLv3") || s.equals("SSLv2Hello")) {
+                        continue;
+                    }
+                    set.add(s);
+                }
+                sslSocket.setEnabledProtocols(set.toArray(new String[0]));
             }
 
             IntrospectionSupport.setProperties(socket, transportOptions);
