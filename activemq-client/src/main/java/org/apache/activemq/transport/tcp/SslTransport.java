@@ -22,6 +22,8 @@ import java.net.URI;
 import java.net.UnknownHostException;
 import java.security.cert.X509Certificate;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
 
 import javax.net.ssl.SSLPeerUnverifiedException;
 import javax.net.ssl.SSLSession;
@@ -46,7 +48,7 @@ import org.apache.activemq.wireformat.WireFormat;
 public class SslTransport extends TcpTransport {
     /**
      * Connect to a remote node such as a Broker.
-     * 
+     *
      * @param wireFormat The WireFormat to be used.
      * @param socketFactory The socket factory to be used. Forcing SSLSockets
      *                for obvious reasons.
@@ -71,24 +73,26 @@ public class SslTransport extends TcpTransport {
             props.put("host", remoteLocation.getHost());
             IntrospectionSupport.setProperties(this.socket, props);
         }
+        setEnabledProtocols();
     }
 
     /**
      * Initialize from a ServerSocket. No access to needClientAuth is given
      * since it is already set within the provided socket.
-     * 
+     *
      * @param wireFormat The WireFormat to be used.
      * @param socket The Socket to be used. Forcing SSL.
      * @throws IOException If TcpTransport throws.
      */
     public SslTransport(WireFormat wireFormat, SSLSocket socket) throws IOException {
         super(wireFormat, socket);
+        setEnabledProtocols();
     }
 
     /**
      * Overriding in order to add the client's certificates to ConnectionInfo
      * Commmands.
-     * 
+     *
      * @param command The Command coming in.
      */
     public void doConsume(Object command) {
@@ -98,15 +102,15 @@ public class SslTransport extends TcpTransport {
         if (command instanceof ConnectionInfo) {
             ConnectionInfo connectionInfo = (ConnectionInfo)command;
             connectionInfo.setTransportContext(getPeerCertificates());
-        } 
+        }
         super.doConsume(command);
     }
-    
+
     /**
      * @return peer certificate chain associated with the ssl socket
      */
     public X509Certificate[] getPeerCertificates() {
-    	
+
         SSLSocket sslSocket = (SSLSocket)this.socket;
 
         SSLSession sslSession = sslSocket.getSession();
@@ -117,7 +121,7 @@ public class SslTransport extends TcpTransport {
         } catch (SSLPeerUnverifiedException e) {
         	clientCertChain = null;
         }
-    	
+
         return clientCertChain;
     }
 
@@ -126,6 +130,23 @@ public class SslTransport extends TcpTransport {
      */
     public String toString() {
         return "ssl://" + socket.getInetAddress() + ":" + socket.getPort();
+    }
+
+    private void setEnabledProtocols() {
+        // http://www.oracle.com/technetwork/java/javase/documentation/cve-2014-3566-2342133.html
+        if (this.socket != null) {
+            SSLSocket sslSocket = (SSLSocket) this.socket;
+            // Strip "SSLv3" from the current enabled protocols.
+            String[] protocols = sslSocket.getEnabledProtocols();
+            Set<String> set = new HashSet<String>();
+            for (String s : protocols) {
+                 if (s.equals("SSLv3") || s.equals("SSLv2Hello")) {
+                    continue;
+                }
+                set.add(s);
+            }
+            sslSocket.setEnabledProtocols(set.toArray(new String[0]));
+        }
     }
 
 }
